@@ -1,13 +1,34 @@
-mod http_response;
-mod http_status;
+mod http_methods;
+mod http_request;
+pub mod http_response;
+pub mod http_status;
 
-use std::{io::Write, net::TcpListener};
+use crate::server::{
+    http_methods::HttpMethods, http_request::HttpRequest, http_response::HttpResponse,
+    http_status::HttpStatus,
+};
+use std::{collections::HashMap, io::Write, net::TcpListener};
 
-use crate::server::{http_response::HttpResponse, http_status::HttpStatus};
+pub struct HttpServer {
+    // get routes: HashMap<String, fn() -> HttpResponse>,
+    get_routes: HashMap<String, fn() -> HttpResponse>,
+}
 
-pub struct HttpServer;
+impl Default for HttpServer {
+    fn default() -> Self {
+        HttpServer {
+            // get_routes: HashMap::new(),
+            get_routes: HashMap::new(),
+        }
+    }
+}
 
 impl HttpServer {
+    pub fn get(&mut self, path: &str, handler: fn() -> HttpResponse) -> &mut Self {
+        self.get_routes.insert(path.to_string(), handler);
+        self
+    }
+
     pub fn run(&self, addr: &str, port: u16) -> Result<(), Box<dyn std::error::Error>> {
         println!("Server is running on {}:{}", addr, port);
 
@@ -17,16 +38,38 @@ impl HttpServer {
             match stream {
                 Ok(mut _stream) => {
                     println!("New connection: {}", _stream.peer_addr()?);
-                    let response = HttpResponse::from_status(HttpStatus::Ok);
-                    
-                    println!("{}", response.to_string());
-
-                    _stream.write_all(response.to_string().as_bytes())?;
-                    _stream.flush()?;
+                    self.handle_connection(&mut _stream)?;
                 }
                 Err(e) => {
                     println!("Error: {}", e);
                 }
+            }
+        }
+
+        Ok(())
+    }
+
+    fn handle_connection(
+        &self,
+        _stream: &mut std::net::TcpStream,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let request = HttpRequest::from_stream(_stream)?;
+
+        match request.method {
+            HttpMethods::GET => {
+                let response = match self.get_routes.get(&request.path) {
+                    Some(handler) => handler(),
+                    None => HttpResponse::from_status(HttpStatus::NotFound),
+                };
+
+                _stream.write_all(response.to_string().as_bytes())?;
+                _stream.flush()?;
+            }
+            _ => {
+                let response = HttpResponse::from_status(HttpStatus::NotFound);
+
+                _stream.write_all(response.to_string().as_bytes())?;
+                _stream.flush()?;
             }
         }
 

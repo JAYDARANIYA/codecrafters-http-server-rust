@@ -6,7 +6,6 @@ pub enum HttpStatus {
 }
 
 impl HttpStatus {
-
     pub fn get_status(&self) -> u16 {
         match self {
             HttpStatus::Ok => 200,
@@ -24,5 +23,4 @@ impl HttpStatus {
             HttpStatus::InternalServerError => "Internal Server Error",
         }
     }
-
 }

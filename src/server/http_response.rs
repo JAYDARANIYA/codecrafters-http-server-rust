@@ -1,5 +1,3 @@
-use crate::constants::{CRLF, DOUBLE_CRLF};
-
 use super::http_status::HttpStatus;
 
 pub struct HttpResponse {
