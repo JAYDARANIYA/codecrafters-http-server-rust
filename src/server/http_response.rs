@@ -30,9 +30,14 @@ impl HttpResponse {
 
         response.push_str(&format!("HTTP/1.1 {}\r\n", self.status));
 
+        if !self.headers.contains_key("Content-Type") && !self.body.is_empty() {
+            response.push_str("Content-Type: text/plain\r\n");
+        }
         for (key, value) in &self.headers {
             response.push_str(&format!("{}: {}\r\n", key, value));
         }
+
+        // if content-type is not set, set it to text/plain
 
         if !self.body.is_empty() {
             response.push_str(&format!("Content-Length: {}\r\n", self.body.len()));
