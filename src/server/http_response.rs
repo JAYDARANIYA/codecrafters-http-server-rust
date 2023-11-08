@@ -15,12 +15,10 @@ impl HttpResponse {
         let mut response = String::new();
 
         response.push_str(&format!(
-            "HTTP/1.1 {} {}",
+            "HTTP/1.1 {} {}\r\n\r\n",
             self.status.get_status(),
             self.status.get_message()
         ));
-
-        response.push_str(DOUBLE_CRLF);
 
         response
     }
