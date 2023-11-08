@@ -1,3 +1,5 @@
+use std::fmt;
+
 pub enum HttpStatus {
     Ok = 200,
     Created = 201,
@@ -22,5 +24,11 @@ impl HttpStatus {
             HttpStatus::NotFound => "Not Found",
             HttpStatus::InternalServerError => "Internal Server Error",
         }
+    }
+}
+
+impl fmt::Display for HttpStatus {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{} {}", self.get_status(), self.get_message())
     }
 }

@@ -1,3 +1,4 @@
+mod handlers;
 mod http_methods;
 mod http_request;
 pub mod http_response;
@@ -10,8 +11,8 @@ use crate::server::{
 use std::{collections::HashMap, io::Write, net::TcpListener};
 
 pub struct HttpServer {
-    // get routes: HashMap<String, fn() -> HttpResponse>,
-    get_routes: HashMap<String, fn() -> HttpResponse>,
+    // get routes: HashMap<String, fn(&HttpRequest) -> HttpResponse>,
+    get_routes: HashMap<String, Box<dyn Fn(&HttpRequest) -> HttpResponse>>,
 }
 
 impl Default for HttpServer {
@@ -24,8 +25,11 @@ impl Default for HttpServer {
 }
 
 impl HttpServer {
-    pub fn get(&mut self, path: &str, handler: fn() -> HttpResponse) -> &mut Self {
-        self.get_routes.insert(path.to_string(), handler);
+    pub fn get<F>(&mut self, path: &str, handler: F) -> &mut Self
+    where
+        F: Fn(&HttpRequest) -> HttpResponse + 'static,
+    {
+        self.get_routes.insert(path.to_string(), Box::new(handler));
         self
     }
 
@@ -37,7 +41,6 @@ impl HttpServer {
         for stream in listener.incoming() {
             match stream {
                 Ok(mut _stream) => {
-                    println!("New connection: {}", _stream.peer_addr()?);
                     self.handle_connection(&mut _stream)?;
                 }
                 Err(e) => {
@@ -57,10 +60,18 @@ impl HttpServer {
 
         match request.method {
             HttpMethods::GET => {
-                let response = match self.get_routes.get(&request.path) {
-                    Some(handler) => handler(),
-                    None => HttpResponse::from_status(HttpStatus::NotFound),
-                };
+                let mut response = HttpResponse::from_status(HttpStatus::NotFound);
+
+                for (path, handler) in &self.get_routes {
+                    // if path contains * then we need to check if the request path starts with the path
+                    if path.contains("/*") {
+                        if request.path.join("/").starts_with(&path.replace("/*", "")) {
+                            response = handler(&request);
+                        }
+                    } else if path == &request.path.join("/") {
+                        response = handler(&request);
+                    }
+                }
 
                 _stream.write_all(response.to_string().as_bytes())?;
                 _stream.flush()?;

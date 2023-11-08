@@ -9,7 +9,7 @@ use super::http_methods::HttpMethods;
 #[derive(Debug)]
 pub struct HttpRequest {
     pub method: HttpMethods,
-    pub path: String,
+    pub path: Vec<String>,
     pub version: String,
     pub headers: HashMap<String, String>,
     pub body: String,
@@ -21,7 +21,7 @@ impl HttpRequest {
 
         let mut request = HttpRequest {
             method: HttpMethods::GET,
-            path: String::new(),
+            path: Vec::new(),
             version: String::new(),
             headers: HashMap::new(),
             body: String::new(),
@@ -34,7 +34,13 @@ impl HttpRequest {
         let mut parts = line.split_whitespace();
 
         request.method = HttpMethods::from_string(parts.next().unwrap());
-        request.path = parts.next().unwrap().to_string();
+
+        request.path = parts
+            .next()
+            .unwrap()
+            .split("/")
+            .map(|s| s.to_string())
+            .collect();
 
         request.version = parts.next().unwrap().to_string();
 
