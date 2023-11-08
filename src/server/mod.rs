@@ -1,4 +1,9 @@
-use std::net::TcpListener;
+mod http_response;
+mod http_status;
+
+use std::{io::Write, net::TcpListener};
+
+use crate::server::{http_response::HttpResponse, http_status::HttpStatus};
 
 pub struct HttpServer;
 
@@ -10,8 +15,14 @@ impl HttpServer {
 
         for stream in listener.incoming() {
             match stream {
-                Ok(_stream) => {
+                Ok(mut _stream) => {
                     println!("New connection: {}", _stream.peer_addr()?);
+                    let response = HttpResponse::from_status(HttpStatus::Ok);
+                    
+                    println!("{}", response.to_string());
+
+                    _stream.write_all(response.to_string().as_bytes())?;
+                    _stream.flush()?;
                 }
                 Err(e) => {
                     println!("Error: {}", e);
