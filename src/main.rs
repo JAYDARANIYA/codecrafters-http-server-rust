@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             let file_path = format!("{}/{}", directory.clone(), path);
             match std::fs::write(file_path, request.body.clone()) {
-                Ok(_) => HttpResponse::from_status(HttpStatus::Ok),
+                Ok(_) => HttpResponse::from_status(HttpStatus::Created),
                 Err(_) => HttpResponse::from_status(HttpStatus::NotFound),
             }
         })
