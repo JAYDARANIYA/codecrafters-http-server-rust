@@ -17,6 +17,7 @@ use std::sync::Arc;
 type Handler = Arc<dyn Fn(&HttpRequest) -> HttpResponse + Send + Sync>;
 
 static GET_ROUTES: Lazy<DashMap<String, Handler>> = Lazy::new(DashMap::new);
+static POST_ROUTES: Lazy<DashMap<String, Handler>> = Lazy::new(DashMap::new);
 
 pub struct HttpServer;
 
@@ -32,6 +33,14 @@ impl HttpServer {
         F: Fn(&HttpRequest) -> HttpResponse + 'static + Send + Sync,
     {
         GET_ROUTES.insert(path.to_string(), Arc::new(handler));
+        self
+    }
+
+    pub fn post<F>(&mut self, path: &str, handler: F) -> &mut Self
+    where
+        F: Fn(&HttpRequest) -> HttpResponse + 'static + Send + Sync,
+    {
+        POST_ROUTES.insert(path.to_string(), Arc::new(handler));
         self
     }
 
@@ -58,14 +67,34 @@ impl HttpServer {
     fn handle_connection(stream: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
         let request = HttpRequest::from_stream(stream)?;
 
-        let get_routes = GET_ROUTES.clone();
         match request.method {
             HttpMethods::GET => {
-                let response = get_routes
+                let response = GET_ROUTES
                     .get(&request.path.join("/"))
                     .map(|handler| handler.value()(&request))
                     .or_else(|| {
-                        get_routes.iter().find_map(|entry| {
+                        GET_ROUTES.iter().find_map(|entry| {
+                            let path = entry.key();
+                            if path.contains("/*")
+                                && request.path.join("/").starts_with(&path.replace("/*", ""))
+                            {
+                                Some(entry.value()(&request))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| HttpResponse::from_status(HttpStatus::NotFound));
+
+                stream.write_all(response.to_string().as_bytes())?;
+                stream.flush()?;
+            }
+            HttpMethods::POST => {
+                let response = POST_ROUTES
+                    .get(&request.path.join("/"))
+                    .map(|handler| handler.value()(&request))
+                    .or_else(|| {
+                        POST_ROUTES.iter().find_map(|entry| {
                             let path = entry.key();
                             if path.contains("/*")
                                 && request.path.join("/").starts_with(&path.replace("/*", ""))

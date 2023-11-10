@@ -16,7 +16,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
 
-    println!("Serving directory: {}", directory);
+    std::env::set_var("DIR_SERVER", directory.clone());
+
+    println!("Serving directory: {}", std::env::var("DIR_SERVER").unwrap());
 
     HttpServer::default()
         .get("/", |_| HttpResponse::from_status(HttpStatus::Ok))
@@ -33,9 +35,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 None => "No User-Agent header".to_string(),
             },
         })
-        .get("/file/*", move |request| {
+        .get("/files/*", |request| {
+            let directory = std::env::var("DIR_SERVER").unwrap();
             let path = request.path.join("/").replace("/files/", "");
-            let file_path = format!("{}/{}", directory.clone(), path);
+            let file_path = format!("{}/{}", directory, path);
             match std::fs::read_to_string(file_path) {
                 Ok(content) => HttpResponse {
                     status: HttpStatus::Ok,
@@ -49,6 +52,22 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     },
                     body: content,
                 },
+                Err(_) => HttpResponse::from_status(HttpStatus::NotFound),
+            }
+        })
+        .post("/files/*", |request| {
+            let directory = std::env::var("DIR_SERVER").unwrap();
+            let mut path = request.path.join("/").replace("/files/", "");
+            if path.is_empty() {
+                path = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap()
+                    .as_millis()
+                    .to_string();
+            }
+            let file_path = format!("{}/{}", directory.clone(), path);
+            match std::fs::write(file_path, request.body.clone()) {
+                Ok(_) => HttpResponse::from_status(HttpStatus::Ok),
                 Err(_) => HttpResponse::from_status(HttpStatus::NotFound),
             }
         })
