@@ -8,12 +8,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     // read --directory directory/  argument
     let args: Vec<String> = std::env::args().collect();
 
-    if args.len() != 3 {
-        println!("Usage: ./server --directory directory/");
-        return Ok(());
-    }
-
-    let directory = args[2].clone();
+    let directory = match args.get(2).cloned() {
+        Some(directory) => directory,
+        None => {
+            // return current directory
+            std::env::current_dir()?.to_string_lossy().to_string()
+        }
+    };
 
     println!("Serving directory: {}", directory);
 
