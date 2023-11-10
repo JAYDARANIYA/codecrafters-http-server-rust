@@ -33,7 +33,7 @@ impl HttpRequest {
 
         let mut parts = line.split_whitespace();
 
-        request.method = HttpMethods::from_string(parts.next().unwrap());
+        request.method = HttpMethods::from_string(parts.next().unwrap_or("GET"));
 
         request.path = parts
             .next()

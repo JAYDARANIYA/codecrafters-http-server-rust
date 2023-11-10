@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use super::http_status::HttpStatus;
 
+
 pub struct HttpResponse {
     pub status: HttpStatus,
     pub headers: HashMap<String, String>,

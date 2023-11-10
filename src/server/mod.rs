@@ -1,35 +1,37 @@
-mod handlers;
 mod http_methods;
 mod http_request;
 pub mod http_response;
 pub mod http_status;
+mod thread_pool;
 
 use crate::server::{
     http_methods::HttpMethods, http_request::HttpRequest, http_response::HttpResponse,
     http_status::HttpStatus,
 };
-use std::{collections::HashMap, io::Write, net::TcpListener};
+use dashmap::DashMap;
+use once_cell::sync::Lazy;
+use std::io::Write;
+use std::net::{TcpListener, TcpStream};
+use std::sync::Arc;
 
-pub struct HttpServer {
-    // get routes: HashMap<String, fn(&HttpRequest) -> HttpResponse>,
-    get_routes: HashMap<String, Box<dyn Fn(&HttpRequest) -> HttpResponse>>,
-}
+type Handler = Arc<dyn Fn(&HttpRequest) -> HttpResponse + Send + Sync>;
+
+static GET_ROUTES: Lazy<DashMap<String, Handler>> = Lazy::new(DashMap::new);
+
+pub struct HttpServer;
 
 impl Default for HttpServer {
     fn default() -> Self {
-        HttpServer {
-            // get_routes: HashMap::new(),
-            get_routes: HashMap::new(),
-        }
+        HttpServer {}
     }
 }
 
 impl HttpServer {
     pub fn get<F>(&mut self, path: &str, handler: F) -> &mut Self
     where
-        F: Fn(&HttpRequest) -> HttpResponse + 'static,
+        F: Fn(&HttpRequest) -> HttpResponse + 'static + Send + Sync,
     {
-        self.get_routes.insert(path.to_string(), Box::new(handler));
+        GET_ROUTES.insert(path.to_string(), Arc::new(handler));
         self
     }
 
@@ -38,49 +40,51 @@ impl HttpServer {
 
         let listener = TcpListener::bind(format!("{}:{}", addr, port))?;
 
+        let thread_pool = thread_pool::ThreadPool::new(8);
+
         for stream in listener.incoming() {
-            match stream {
-                Ok(mut _stream) => {
-                    self.handle_connection(&mut _stream)?;
+            let mut stream = stream?;
+
+            thread_pool.execute(move || {
+                if let Err(e) = Self::handle_connection(&mut stream) {
+                    println!("Failed to handle connection: {}", e);
                 }
-                Err(e) => {
-                    println!("Error: {}", e);
-                }
-            }
+            });
         }
 
         Ok(())
     }
 
-    fn handle_connection(
-        &self,
-        _stream: &mut std::net::TcpStream,
-    ) -> Result<(), Box<dyn std::error::Error>> {
-        let request = HttpRequest::from_stream(_stream)?;
+    fn handle_connection(stream: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+        let request = HttpRequest::from_stream(stream)?;
 
+        let get_routes = GET_ROUTES.clone();
         match request.method {
             HttpMethods::GET => {
-                let mut response = HttpResponse::from_status(HttpStatus::NotFound);
+                let response = get_routes
+                    .get(&request.path.join("/"))
+                    .map(|handler| handler.value()(&request))
+                    .or_else(|| {
+                        get_routes.iter().find_map(|entry| {
+                            let path = entry.key();
+                            if path.contains("/*")
+                                && request.path.join("/").starts_with(&path.replace("/*", ""))
+                            {
+                                Some(entry.value()(&request))
+                            } else {
+                                None
+                            }
+                        })
+                    })
+                    .unwrap_or_else(|| HttpResponse::from_status(HttpStatus::NotFound));
 
-                for (path, handler) in &self.get_routes {
-                    // if path contains * then we need to check if the request path starts with the path
-                    if path.contains("/*") {
-                        if request.path.join("/").starts_with(&path.replace("/*", "")) {
-                            response = handler(&request);
-                        }
-                    } else if path == &request.path.join("/") {
-                        response = handler(&request);
-                    }
-                }
-
-                _stream.write_all(response.to_string().as_bytes())?;
-                _stream.flush()?;
+                stream.write_all(response.to_string().as_bytes())?;
+                stream.flush()?;
             }
             _ => {
                 let response = HttpResponse::from_status(HttpStatus::NotFound);
-
-                _stream.write_all(response.to_string().as_bytes())?;
-                _stream.flush()?;
+                stream.write_all(response.to_string().as_bytes())?;
+                stream.flush()?;
             }
         }
 
